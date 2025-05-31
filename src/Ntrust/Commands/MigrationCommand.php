@@ -1,4 +1,6 @@
-<?php namespace Klaravel\Ntrust\Commands;
+<?php 
+
+namespace Klaravel\Ntrust\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
@@ -10,7 +12,7 @@ class MigrationCommand extends Command
      * 
      * @var string
      */
-    private $profile;
+    protected $profile;
 
     /**
      * The console command name.
@@ -29,66 +31,46 @@ class MigrationCommand extends Command
     /**
      * Execute the console command.
      *
-     * @return void
+     * @return int
      */
     public function handle()
     {
         $this->profile = $this->argument('profile');
 
-        // check valid profile
-        if (!Config::get('ntrust.profiles.' . $this->profile))
-        {
+        if (!Config::has('ntrust.profiles.' . $this->profile)) {
             $this->error('Invalid profile. Please check profiles in config/ntrust.php');
-            return;
+            return self::FAILURE;
         }
 
-        $this->line(substr(__DIR__, 0, -8).'views');
-
-        $this->laravel->view->addNamespace('ntrust', substr(__DIR__, 0, -15).'views');
+        $this->laravel->view->addNamespace('ntrust', realpath(__DIR__ . '/../../views'));
 
         $rolesTable          = Config::get('ntrust.profiles.'. $this->profile .'.roles_table');
         $roleUserTable       = Config::get('ntrust.profiles.'. $this->profile .'.role_user_table');
         $permissionsTable    = Config::get('ntrust.profiles.'. $this->profile .'.permissions_table');
         $permissionRoleTable = Config::get('ntrust.profiles.'. $this->profile .'.permission_role_table');
 
-        $this->line('');
-        $this->info( "Tables: $rolesTable, $roleUserTable, $permissionsTable, $permissionRoleTable" );
+        $this->info("Tables: $rolesTable, $roleUserTable, $permissionsTable, $permissionRoleTable");
+        $this->comment("A migration that creates '$rolesTable', '$roleUserTable', '$permissionsTable', '$permissionRoleTable' tables will be created in database/migrations directory");
 
-        $message = "A migration that creates '$rolesTable', '$roleUserTable', '$permissionsTable', '$permissionRoleTable'".
-            " tables will be created in database/migrations directory";
-
-        $this->comment($message);
-        $this->line('');
-
-        if ($this->confirm("Proceed with the migration creation? [Yes|no]", "Yes")) {
-
-            $this->line('');
+        if ($this->confirm("Proceed with the migration creation? [Yes|no]", true)) {
 
             $this->info("Creating migration...");
+
             if ($this->createMigration($rolesTable, $roleUserTable, $permissionsTable, $permissionRoleTable)) {
-
                 $this->info("Migration successfully created!");
+                return self::SUCCESS;
             } else {
-                $this->error(
-                    "Couldn't create migration.\n Check the write permissions".
-                    " within the database/migrations directory."
-                );
+                $this->error("Couldn't create migration. Check write permissions in database/migrations directory.");
+                return self::FAILURE;
             }
-
-            $this->line('');
-
         }
+
+        return self::SUCCESS;
     }
 
-    /**
-     * Create the migration.
-     *
-     * @return bool
-     */
     protected function createMigration($rolesTable, $roleUserTable, $permissionsTable, $permissionRoleTable)
     {
-        $migrationFile = base_path("/database/migrations")."/".date('Y_m_d_His'). "_" . 
-            $this->profile ."_ntrust_setup_tables.php";
+        $migrationFile = base_path("database/migrations") . "/" . date('Y_m_d_His') . "_create_{$this->profile}_ntrust_setup_tables.php";
 
         $usersTable  = Config::get('ntrust.profiles.' . $this->profile . '.table');
         $userModel   = Config::get('ntrust.profiles.' . $this->profile . '.model');

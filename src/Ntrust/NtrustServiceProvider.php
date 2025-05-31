@@ -2,35 +2,11 @@
 
 namespace Klaravel\Ntrust;
 
-/**
- * This file is part of Ntrust,
- * a role & permission management solution for Laravel.
- */
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Blade;
 
 class NtrustServiceProvider extends ServiceProvider
 {
-    /**
-     * Indicates if loading of the provider is deferred.
-     *
-     * @var bool
-     */
-    protected $defer = false;
-
-    /**
-     * Bootstrap the application events.
-     *
-     * @return void
-     */
-    public function boot()
-    {
-        // files to publish
-        $this->publishes($this->getPublished());
-
-        // Register blade directives
-        $this->bladeDirectives();
-    }
-
     /**
      * Register the service provider.
      *
@@ -39,10 +15,24 @@ class NtrustServiceProvider extends ServiceProvider
     public function register()
     {
         $this->registerNtrust();
-        
+
         $this->commands($this->commands);
-        
+
         $this->mergeConfig();
+    }
+
+    /**
+     * Bootstrap the application events.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        // files to publish, dengan tag 'config'
+        $this->publishes($this->getPublished(), 'config');
+
+        // Register blade directives
+        $this->bladeDirectives();
     }
 
     /**
@@ -55,12 +45,17 @@ class NtrustServiceProvider extends ServiceProvider
         $this->app->bind('ntrust', function ($app) {
             return new Ntrust($app);
         });
-        
-        $this->app->alias('ntrust', 'Klaravel\Ntrust');
+
+        $this->app->alias('ntrust', Ntrust::class);
     }
 
+    /**
+     * The commands provided by the service provider.
+     *
+     * @var array
+     */
     protected $commands = [
-        'Klaravel\Ntrust\Commands\MigrationCommand',
+        \Klaravel\Ntrust\Commands\MigrationCommand::class,
     ];
 
     /**
@@ -70,26 +65,28 @@ class NtrustServiceProvider extends ServiceProvider
      */
     private function bladeDirectives()
     {
-        // Call to Ntrust::hasRole
-        \Blade::directive('role', function($expression) {
+        Blade::directive('role', function ($expression) {
             return "<?php if (\\Ntrust::hasRole({$expression})) : ?>";
         });
-        \Blade::directive('endrole', function($expression) {
-            return "<?php endif; // Ntrust::hasRole ?>";
+
+        Blade::directive('endrole', function () {
+            return "<?php endif; ?>";
         });
-        // Call to Ntrust::can
-        \Blade::directive('permission', function($expression) {
+
+        Blade::directive('permission', function ($expression) {
             return "<?php if (\\Ntrust::can({$expression})) : ?>";
         });
-        \Blade::directive('endpermission', function($expression) {
-            return "<?php endif; // Ntrust::can ?>";
+
+        Blade::directive('endpermission', function () {
+            return "<?php endif; ?>";
         });
-        // Call to Ntrust::ability
-        \Blade::directive('ability', function($expression) {
+
+        Blade::directive('ability', function ($expression) {
             return "<?php if (\\Ntrust::ability({$expression})) : ?>";
         });
-        \Blade::directive('endability', function($expression) {
-            return "<?php endif; // Ntrust::ability ?>";
+
+        Blade::directive('endability', function () {
+            return "<?php endif; ?>";
         });
     }
 
@@ -101,11 +98,10 @@ class NtrustServiceProvider extends ServiceProvider
     protected function getPublished()
     {
         return [
-            realpath(__DIR__ .
-                '/../config/ntrust.php') =>
-                (function_exists('config_path') ?
-                    config_path('ntrust.php') :
-                    base_path('config/ntrust.php')),
+            realpath(__DIR__.'/../config/ntrust.php') => 
+                function_exists('config_path') 
+                    ? config_path('ntrust.php') 
+                    : base_path('config/ntrust.php'),
         ];
     }
 

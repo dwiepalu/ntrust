@@ -26,19 +26,14 @@ trait NtrustPermissionTrait
      * @return void
      */
     protected static function bootNtrustPermissionTrait()
-    {
-        /**
-         * Attach event listener to remove the many-to-many records when trying to delete
-         *  Will NOT delete any records if the permission model uses soft deletes.
-         */
-        static::deleted(function($permission)
-        {
-            if(Cache::getStore() instanceof TaggableStore) {
-                Cache::tags(Config::get('ntrust.profiles.' . self::$roleProfile . '.permission'))
-                    ->flush();
-
-                $permission->roles()->sync([]);
-            }
-        });
-    }
+	{
+    static::deleted(function ($permission) {
+        // Flush cache jika cache store mendukung tagging
+        if (Cache::getStore() instanceof TaggableStore) {
+            Cache::tags(Config::get('ntrust.profiles.' . self::$roleProfile . '.permission'))->flush();
+        }
+        // Lepas semua relasi roles meski cache tidak pakai tagging
+        $permission->roles()->sync([]);
+    });
+	}
 }

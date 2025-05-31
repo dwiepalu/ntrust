@@ -1,8 +1,10 @@
-<?php namespace Klaravel\Ntrust\Traits;
+<?php
+namespace Klaravel\Ntrust\Traits;
 
 use Illuminate\Cache\TaggableStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 trait NtrustUserTrait
@@ -11,16 +13,16 @@ trait NtrustUserTrait
     public function cachedRoles()
     {
         $userPrimaryKey = $this->primaryKey;
-        $cacheKey = 'ntrust_roles_for_' . self::$roleProfile . '_'.$this->$userPrimaryKey;
+        $cacheKey = 'ntrust_roles_for_' . self::$roleProfile . '_' . $this->$userPrimaryKey;
 
         if (Cache::getStore() instanceof TaggableStore) {
             return Cache::tags(Config::get('ntrust.profiles.' . self::$roleProfile . '.role_user_table'))
                 ->remember($cacheKey, Config::get('cache.ttl', 1440), function () {
                     return $this->roles()->get();
                 });
-        } 
-        else
-            return $this->roles()->get();
+        }
+
+        return $this->roles()->get();
     }
 
     /**
@@ -31,32 +33,30 @@ trait NtrustUserTrait
     public function roles()
     {
         return $this->belongsToMany(
-            Config::get('ntrust.profiles.' . self::$roleProfile . '.role'), 
-            Config::get('ntrust.profiles.' . self::$roleProfile . '.role_user_table'), 
-            Config::get('ntrust.profiles.' . self::$roleProfile . '.user_foreign_key'), 
-            Config::get('ntrust.profiles.' . self::$roleProfile . '.role_foreign_key'));
+            Config::get('ntrust.profiles.' . self::$roleProfile . '.role'),
+            Config::get('ntrust.profiles.' . self::$roleProfile . '.role_user_table'),
+            Config::get('ntrust.profiles.' . self::$roleProfile . '.user_foreign_key'),
+            Config::get('ntrust.profiles.' . self::$roleProfile . '.role_foreign_key')
+        );
     }
 
     /**
      * Trait boot method
-     * 
+     *
      * @return void
      */
     protected static function bootNtrustUserTrait()
     {
-        static::saved(function()
-        {
+        static::saved(function () {
             self::clearCache();
         });
 
-        static::deleted(function($user)
-        {
+        static::deleted(function ($user) {
             self::clearCache($user);
         });
 
-        if(method_exists(self::class, 'restored')) {
-            static::restored(function($user)
-            {
+        if (method_exists(self::class, 'restored')) {
+            static::restored(function ($user) {
                 self::clearCache($user);
             });
         }
@@ -83,13 +83,10 @@ trait NtrustUserTrait
                 }
             }
 
-            // If we've made it this far and $requireAll is FALSE, then NONE of the roles were found
-            // If we've made it this far and $requireAll is TRUE, then ALL of the roles were found.
-            // Return the value of $requireAll;
             return $requireAll;
         } else {
             foreach ($this->cachedRoles() as $role) {
-                if ($role->name == $name) {
+                if ($role->name === $name) {
                     return true;
                 }
             }
@@ -119,15 +116,12 @@ trait NtrustUserTrait
                 }
             }
 
-            // If we've made it this far and $requireAll is FALSE, then NONE of the perms were found
-            // If we've made it this far and $requireAll is TRUE, then ALL of the perms were found.
-            // Return the value of $requireAll;
             return $requireAll;
         } else {
             foreach ($this->cachedRoles() as $role) {
                 // Validate against the Permission table
                 foreach ($role->cachedPermissions() as $perm) {
-                    if (str_is( $permission, $perm->name) ) {
+                    if (Str::is($permission, $perm->name)) {
                         return true;
                     }
                 }
@@ -150,7 +144,6 @@ trait NtrustUserTrait
      */
     public function ability($roles, $permissions, $options = [])
     {
-        // Convert string to array if that's what is passed in.
         if (!is_array($roles)) {
             $roles = explode(',', $roles);
         }
@@ -158,53 +151,45 @@ trait NtrustUserTrait
             $permissions = explode(',', $permissions);
         }
 
-        // Set up default values and validate options.
-        if (!isset($options['validate_all'])) {
-            $options['validate_all'] = false;
-        } else {
-            if ($options['validate_all'] !== true && $options['validate_all'] !== false) {
-                throw new InvalidArgumentException();
-            }
-        }
-        if (!isset($options['return_type'])) {
-            $options['return_type'] = 'boolean';
-        } else {
-            if ($options['return_type'] != 'boolean' &&
-                $options['return_type'] != 'array' &&
-                $options['return_type'] != 'both') {
-                throw new InvalidArgumentException();
-            }
+        $options['validate_all'] = $options['validate_all'] ?? false;
+        if (!in_array($options['validate_all'], [true, false], true)) {
+            throw new InvalidArgumentException('validate_all must be boolean');
         }
 
-        // Loop through roles and permissions and check each.
+        $options['return_type'] = $options['return_type'] ?? 'boolean';
+        if (!in_array($options['return_type'], ['boolean', 'array', 'both'], true)) {
+            throw new InvalidArgumentException('return_type must be boolean, array or both');
+        }
+
         $checkedRoles = [];
         $checkedPermissions = [];
+
         foreach ($roles as $role) {
             $checkedRoles[$role] = $this->hasRole($role);
         }
+
         foreach ($permissions as $permission) {
             $checkedPermissions[$permission] = $this->can($permission);
         }
 
-        // If validate all and there is a false in either
-        // Check that if validate all, then there should not be any false.
-        // Check that if not validate all, there must be at least one true.
-        if(($options['validate_all'] && !(in_array(false,$checkedRoles) || in_array(false,$checkedPermissions))) ||
-            (!$options['validate_all'] && (in_array(true,$checkedRoles) || in_array(true,$checkedPermissions)))) {
-            $validateAll = true;
+        $validateAll = false;
+        if ($options['validate_all']) {
+            $validateAll = !in_array(false, $checkedRoles, true) && !in_array(false, $checkedPermissions, true);
         } else {
-            $validateAll = false;
+            $validateAll = in_array(true, $checkedRoles, true) || in_array(true, $checkedPermissions, true);
         }
 
-        // Return based on option
-        if ($options['return_type'] == 'boolean') {
-            return $validateAll;
-        } elseif ($options['return_type'] == 'array') {
-            return ['roles' => $checkedRoles, 'permissions' => $checkedPermissions];
-        } else {
-            return [$validateAll, ['roles' => $checkedRoles, 'permissions' => $checkedPermissions]];
+        switch ($options['return_type']) {
+            case 'boolean':
+                return $validateAll;
+            case 'array':
+                return ['roles' => $checkedRoles, 'permissions' => $checkedPermissions];
+            case 'both':
+                return [$validateAll, ['roles' => $checkedRoles, 'permissions' => $checkedPermissions]];
         }
 
+        // fallback, should never reach here
+        return $validateAll;
     }
 
     /**
@@ -214,11 +199,11 @@ trait NtrustUserTrait
      */
     public function attachRole($role)
     {
-        if(is_object($role)) {
+        if (is_object($role)) {
             $role = $role->getKey();
         }
 
-        if(is_array($role)) {
+        if (is_array($role)) {
             $role = $role['id'];
         }
 
@@ -262,12 +247,14 @@ trait NtrustUserTrait
     /**
      * Detach multiple roles from a user
      *
-     * @param mixed $roles
+     * @param mixed|null $roles
      */
-    public function detachRoles($roles=null)
+    public function detachRoles($roles = null)
     {
-        if (!$roles) $roles = $this->roles()->get();
-        
+        if (!$roles) {
+            $roles = $this->roles()->get();
+        }
+
         foreach ($roles as $role) {
             $this->detachRole($role);
         }
@@ -275,16 +262,18 @@ trait NtrustUserTrait
 
     /**
      * Clear cache
+     *
+     * @param mixed|null $user
      */
-    public static function clearCache($user = null) 
+    public static function clearCache($user = null)
     {
-        if(Cache::getStore() instanceof TaggableStore) {
-            Cache::tags(Config::get('ntrust.profiles.' . self::$roleProfile . '.role_user_table'))
-                ->flush();
+        if (Cache::getStore() instanceof TaggableStore) {
+            Cache::tags(Config::get('ntrust.profiles.' . self::$roleProfile . '.role_user_table'))->flush();
 
-            if ($user)
+            if ($user) {
+                // Hati-hati, ini akan menghapus semua roles user
                 $user->roles()->sync([]);
+            }
         }
     }
-
 }
